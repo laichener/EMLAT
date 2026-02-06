@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>臺灣國小生字全文分析系統</title>
+    <style>
+        :root {
+            --stage1-color: #2ecc71; /* 綠色 */
+            --stage2-color: #3498db; /* 藍色 */
+            --stage3-color: #f39c12; /* 橘色 */
+            --stage4-color: #9b59b6; /* 紫色 */
+            --unknown-color: #95a5a6; /* 灰色 */
+        }
+
+        body {
+            font-family: "PingFang TC", "Microsoft JhengHei", sans-serif;
+            background-color: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 800px;
+            background: white;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        h1 { text-align: center; color: #2c3e50; margin-bottom: 1.5rem; }
+
+        /* 輸入區 */
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            box-sizing: border-box;
+            resize: vertical;
+            margin-bottom: 10px;
+        }
+
+        .btn-group { text-align: right; margin-bottom: 2rem; }
+        
+        button {
+            padding: 10px 25px;
+            background-color: #4a90e2;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+        }
+
+        /* 統計區 */
+        .stats-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 10px;
+            margin-bottom: 2rem;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+
+        .stat-item { text-align: center; font-size: 0.9rem; }
+        .stat-count { display: block; font-size: 1.2rem; font-weight: bold; }
+
+        /* 分析結果展示 */
+        .analysis-result {
+            line-height: 2;
+            font-size: 1.3rem;
+            padding: 20px;
+            border: 1px solid #eee;
+            border-radius: 10px;
+            background: #fff;
+            white-space: pre-wrap; /* 保留換行 */
+        }
+
+        /* 字體顏色標記 */
+        .char-item {
+            position: relative;
+            display: inline-block;
+            cursor: help;
+            border-bottom: 2px solid transparent;
+            margin: 0 1px;
+        }
+
+        .char-item:hover { background-color: #ffffcc; }
+
+        /* 顏色定義 */
+        .c1 { color: var(--stage1-color); border-color: var(--stage1-color); }
+        .c2 { color: var(--stage2-color); border-color: var(--stage2-color); }
+        .c3 { color: var(--stage3-color); border-color: var(--stage3-color); }
+        .c4 { color: var(--stage4-color); border-color: var(--stage4-color); }
+        .c0 { color: #333; } /* 標點符號或不在表內的字 */
+
+        /* 提示框 (Tooltip) */
+        .char-item::after {
+            content: attr(data-title);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: #fff;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            white-space: nowrap;
+            visibility: hidden;
+            opacity: 0;
+            transition: opacity 0.2s;
+            z-index: 10;
+        }
+
+        .char-item:hover::after { visibility: visible; opacity: 1; }
+
+        .legend {
+            font-size: 0.8rem;
+            margin-bottom: 10px;
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>國小生字全文難度分析</h1>
+
+    <div class="legend">
+        <span><b style="color:var(--stage1-color)">■</b> 低年級</span>
+        <span><b style="color:var(--stage2-color)">■</b> 中年級</span>
+        <span><b style="color:var(--stage3-color)">■</b> 高年級</span>
+        <span><b style="color:var(--stage4-color)">■</b> 擴充/國中</span>
+    </div>
+
+    <textarea id="textInput" placeholder="請在此貼入一段文章內容..."></textarea>
+    
+    <div class="btn-group">
+        <button onclick="analyzeText()">開始分析文章</button>
+    </div>
+
+    <div class="stats-panel" id="statsPanel" style="display:none;">
+        <div class="stat-item">第一階段<span class="stat-count" id="s1_count" style="color:var(--stage1-color)">0</span></div>
+        <div class="stat-item">第二階段<span class="stat-count" id="s2_count" style="color:var(--stage2-color)">0</span></div>
+        <div class="stat-item">第三階段<span class="stat-count" id="s3_count" style="color:var(--stage3-color)">0</span></div>
+        <div class="stat-item">擴充識字<span class="stat-count" id="s4_count" style="color:var(--stage4-color)">0</span></div>
+    </div>
+
+    <div id="resultArea" class="analysis-result">分析結果將顯示於此...</div>
+</div>
+
+<script>
+    let charMap = {}; // 用 Object 加速查詢效率
+
+    async function init() {
+        try {
+            const response = await fetch('charData.json');
+            const data = await response.json();
+            // 將陣列轉為 Map 結構，搜尋速度從 O(n) 變為 O(1)
+            data.forEach(item => {
+                charMap[item.char] = item;
+            });
+            console.log("資料庫載入成功");
+        } catch (e) {
+            alert("載入 charData.json 失敗，請確認檔案位置。");
+        }
+    }
+
+    function analyzeText() {
+        const text = document.getElementById('textInput').value;
+        const resultArea = document.getElementById('resultArea');
+        const stats = { s1: 0, s2: 0, s3: 0, s4: 0 };
+        
+        if (!text) return;
+
+        resultArea.innerHTML = ""; // 清空
+        
+        // 將字串拆解成字元陣列
+        const chars = Array.from(text);
+        
+        const fragment = document.createDocumentFragment();
+
+        chars.forEach(c => {
+            const span = document.createElement('span');
+            span.innerText = c;
+            
+            const info = charMap[c];
+            if (info) {
+                span.className = `char-item c${info.stage}`;
+                span.setAttribute('data-title', `${info.stageName} (序號:${info.id})`);
+                stats[`s${info.stage}`]++;
+            } else {
+                span.className = 'char-item c0';
+            }
+            fragment.appendChild(span);
+        });
+
+        resultArea.appendChild(fragment);
+        updateStats(stats);
+    }
+
+    function updateStats(stats) {
+        document.getElementById('statsPanel').style.display = 'grid';
+        document.getElementById('s1_count').innerText = stats.s1;
+        document.getElementById('s2_count').innerText = stats.s2;
+        document.getElementById('s3_count').innerText = stats.s3;
+        document.getElementById('s4_count').innerText = stats.s4;
+    }
+
+    init();
+</script>
+
+</body>
+</html>
