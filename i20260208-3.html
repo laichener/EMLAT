@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>臺灣國小生字分析報告系統</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        :root {
+            --stage1-color: #2ecc71; --stage2-color: #3498db;
+            --stage3-color: #f39c12; --stage4-color: #9b59b6;
+            --bg-color: #f0f2f5;
+        }
+
+        body { font-family: "PingFang TC", "Microsoft JhengHei", sans-serif; background-color: var(--bg-color); padding: 20px; display: flex; justify-content: center; }
+        .container { width: 100%; max-width: 900px; background: white; padding: 2rem; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        
+        /* 標題樣式 */
+        .page-title { text-align: center; color: #2c3e50; margin-bottom: 20px; }
+        .report-main-title { font-size: 2rem; margin: 0; color: #333; }
+        .report-sub-title { font-size: 1.1rem; margin: 10px 0 20px 0; color: #666; font-weight: normal; }
+
+        /* 輸入控制區 */
+        .input-section { background: #e9ecef; padding: 20px; border-radius: 10px; margin-bottom: 20px; }
+        .title-inputs { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+        .title-inputs input { padding: 10px; border: 1px solid #ccc; border-radius: 5px; font-size: 0.9rem; }
+        
+        textarea { width: 100%; height: 120px; padding: 15px; border: 2px solid #ddd; border-radius: 10px; font-size: 1rem; box-sizing: border-box; margin-bottom: 10px; }
+        
+        .btn-group { display: flex; justify-content: flex-end; gap: 10px; margin-bottom: 10px; }
+        button { padding: 10px 20px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        .btn-analyze { background-color: #4a90e2; color: white; }
+        .btn-pdf { background-color: #e74c3c; color: white; display: none; }
+        button:hover { opacity: 0.8; }
+
+        /* 統計面板 */
+        .stats-panel { 
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); 
+            gap: 15px; margin-bottom: 20px; padding: 20px; 
+            background: #f8f9fa; border-radius: 10px; border: 1px solid #eee;
+        }
+        .stat-item { text-align: center; }
+        .stat-label { font-size: 0.85rem; color: #666; display: block; }
+        .stat-count { font-size: 1.4rem; font-weight: bold; display: block; margin: 5px 0; }
+        .stat-percent { font-size: 0.8rem; color: #999; }
+
+        /* 分析結果展示 */
+        .analysis-result { 
+            line-height: 2.2; font-size: 1.3rem; padding: 20px; 
+            border: 1px solid #efefef; border-radius: 10px; 
+            white-space: pre-wrap; word-wrap: break-word; min-height: 100px;
+        }
+
+        /* 顏色標記與提示框 */
+        .char-item { position: relative; display: inline-block; margin: 0 1px; cursor: help; }
+        .c1 { color: var(--stage1-color); border-bottom: 2px solid var(--stage1-color); }
+        .c2 { color: var(--stage2-color); border-bottom: 2px solid var(--stage2-color); }
+        .c3 { color: var(--stage3-color); border-bottom: 2px solid var(--stage3-color); }
+        .c4 { color: var(--stage4-color); border-bottom: 2px solid var(--stage4-color); }
+
+        .char-item:hover::after {
+            content: attr(data-title); position: absolute; bottom: 120%; left: 50%; transform: translateX(-50%);
+            background: #333; color: #fff; padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; z-index: 100;
+        }
+
+        .legend { font-size: 0.9rem; margin-bottom: 15px; display: flex; gap: 15px; justify-content: center; flex-wrap: wrap; }
+        
+        @media print {
+            .no-print { display: none !important; }
+            .char-item::after { display: none !important; }
+            .container { box-shadow: none; border: none; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1 class="page-title no-print">生字識字量分析系統</h1>
+
+    <div class="input-section no-print">
+        <div class="title-inputs">
+            <input type="text" id="mainTitleInput" placeholder="報告主標題 (例如：單元三課文分析)" oninput="syncTitles()">
+            <input type="text" id="subTitleInput" placeholder="報告副標題 (例如：分析者：林老師)" oninput="syncTitles()">
+        </div>
+        <textarea id="textInput" placeholder="在此貼入文章內容進行分析..."></textarea>
+        <div class="btn-group">
+            <button class="btn-analyze" onclick="analyzeText()">開始分析文章</button>
+            <button id="pdfBtn" class="btn-pdf" onclick="exportPDF()">匯出 PDF 報告</button>
+        </div>
+    </div>
+
+    <div id="pdfExportArea">
+        <div style="text-align: center;">
+            <h1 id="pdfMainTitle" class="report-main-title">生字分析報告</h1>
+            <h2 id="pdfSubTitle" class="report-sub-title">自動生成分析結果</h2>
+        </div>
+
+        <div class="legend">
+            <span><b>●</b> 總字數統計</span>
+            <span><b style="color:var(--stage1-color)">●</b> 第一階段</span>
+            <span><b style="color:var(--stage2-color)">●</b> 第二階段</span>
+            <span><b style="color:var(--stage3-color)">●</b> 第三階段</span>
+            <span><b style="color:var(--stage4-color)">●</b> 擴充識字</span>
+        </div>
+
+        <div class="stats-panel" id="statsPanel" style="display:none;">
+            <div class="stat-item">
+                <span class="stat-label">總字數 (含標點)</span>
+                <span class="stat-count" id="total_input">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label">有效識字數</span>
+                <span class="stat-count" id="total_matched">0</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label" style="color:var(--stage1-color)">第一階段 (1-2)</span>
+                <span class="stat-count" id="s1_count">0</span>
+                <span class="stat-percent" id="s1_percent">0%</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label" style="color:var(--stage2-color)">第二階段 (3-4)</span>
+                <span class="stat-count" id="s2_count">0</span>
+                <span class="stat-percent" id="s2_percent">0%</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label" style="color:var(--stage3-color)">第三階段 (5-6)</span>
+                <span class="stat-count" id="s3_count">0</span>
+                <span class="stat-percent" id="s3_percent">0%</span>
+            </div>
+            <div class="stat-item">
+                <span class="stat-label" style="color:var(--stage4-color)">擴充識字</span>
+                <span class="stat-count" id="s4_count">0</span>
+                <span class="stat-percent" id="s4_percent">0%</span>
+            </div>
+        </div>
+
+        <div id="resultArea" class="analysis-result">尚未輸入分析內容...</div>
+    </div>
+</div>
+
+<script>
+    let charMap = {};
+
+    async function init() {
+        try {
+            const response = await fetch('charData.json');
+            const data = await response.json();
+            data.forEach(item => { charMap[item.char] = item; });
+        } catch (e) { alert("請檢查 charData.json 檔案是否存在。"); }
+    }
+
+    // 即時同步標題
+    function syncTitles() {
+        const main = document.getElementById('mainTitleInput').value;
+        const sub = document.getElementById('subTitleInput').value;
+        document.getElementById('pdfMainTitle').innerText = main || "生字分析報告";
+        document.getElementById('pdfSubTitle').innerText = sub || "自動生成分析結果";
+    }
+
+    function analyzeText() {
+        const text = document.getElementById('textInput').value;
+        if (!text) return;
+
+        const stats = { s1: 0, s2: 0, s3: 0, s4: 0, matched: 0 };
+        const resultArea = document.getElementById('resultArea');
+        resultArea.innerHTML = "";
+        
+        const fragment = document.createDocumentFragment();
+        Array.from(text).forEach(c => {
+            const span = document.createElement('span');
+            span.innerText = c;
+            const info = charMap[c];
+            if (info) {
+                span.className = `char-item c${info.stage}`;
+                span.setAttribute('data-title', `${info.stageName} (序號:${info.id})`);
+                stats[`s${info.stage}`]++;
+                stats.matched++;
+            } else {
+                span.className = 'char-item';
+            }
+            fragment.appendChild(span);
+        });
+
+        resultArea.appendChild(fragment);
+        updateStats(text.length, stats);
+        document.getElementById('pdfBtn').style.display = 'block';
+    }
+
+    function updateStats(totalLen, stats) {
+        document.getElementById('statsPanel').style.display = 'grid';
+        document.getElementById('total_input').innerText = totalLen;
+        document.getElementById('total_matched').innerText = stats.matched;
+        [1, 2, 3, 4].forEach(n => {
+            const count = stats[`s${n}`];
+            const percent = stats.matched > 0 ? ((count / stats.matched) * 100).toFixed(1) : 0;
+            document.getElementById(`s${n}_count`).innerText = count;
+            document.getElementById(`s${n}_percent`).innerText = `${percent}%`;
+        });
+    }
+
+    function exportPDF() {
+        const element = document.getElementById('pdfExportArea');
+        const mainTitle = document.getElementById('mainTitleInput').value || "生字分析報告";
+        const opt = {
+            margin:       [15, 15],
+            filename:     `${mainTitle}.pdf`,
+            image:        { type: 'jpeg', quality: 0.98 },
+            html2canvas:  { scale: 2, useCORS: true },
+            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        };
+        html2pdf().set(opt).from(element).save();
+    }
+
+    init();
+</script>
+
+</body>
+</html>
